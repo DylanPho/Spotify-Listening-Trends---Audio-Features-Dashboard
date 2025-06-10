@@ -1,0 +1,10 @@
+#!/bin/sh
+'''exec' "/Users/dylanpho/Library/CloudStorage/OneDrive-TheUniversityofColoradoDenver/CU Denver/2024-2025/Summer 2025/Summer Projects/Spotify Listening Trends & Audio Features Dashboard/venv/bin/python" "$0" "$@"
+' '''
+# -*- coding: utf-8 -*-
+import re
+import sys
+from numpy.f2py.f2py2e import main
+if __name__ == '__main__':
+    sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0])
+    sys.exit(main())
