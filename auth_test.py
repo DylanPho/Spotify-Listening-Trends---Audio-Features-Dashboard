@@ -14,6 +14,8 @@ sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
 
 playlist_id = "0I0YiGfPrZtlzu1z4wHtoC" # indie chill wanderlust
 
+# https://open.spotify.com/playlist/0I0YiGfPrZtlzu1z4wHtoC?si=1907d7c8760d4ed4
+
 results = sp.playlist_tracks(playlist_id, market="US")
 for i, item in enumerate(results['items']):
     track = item['track']

@@ -1,66 +1,90 @@
 import os
+import dotenv
 import pandas as pd
-from dotenv import load_dotenv
 import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials
-from sqlalchemy import create_engine
+from spotipy.oauth2 import SpotifyOAuth
+from spotipy.exceptions import SpotifyException
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from .env file
+dotenv.load_dotenv()
 
-# Authenticate with client credentials (public data only)
-sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+# Set up authentication using SpotifyOAuth
+sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
+    scope="playlist-read-private user-library-read",
     client_id=os.getenv("SPOTIPY_CLIENT_ID"),
-    client_secret=os.getenv("SPOTIPY_CLIENT_SECRET")
+    client_secret=os.getenv("SPOTIPY_CLIENT_SECRET"),
+    redirect_uri=os.getenv("SPOTIPY_REDIRECT_URI")
 ))
 
 def fetch_playlist_tracks(playlist_id):
     print(f"Fetching tracks from playlist: {playlist_id}")
-    
-    # Initial request with market parameter
-    results = sp.playlist_tracks(playlist_id, market="US")
+    results = sp.playlist_items(playlist_id, additional_types=['track'])
     tracks = results['items']
 
-    # Pagination: fetch next pages
+    # Continue fetching next pages
     while results['next']:
         results = sp.next(results)
         tracks.extend(results['items'])
 
-    track_data = []
+    data = []
 
     for item in tracks:
-        track = item['track']
-        if not track: continue  # Skip if track is None
+        track = item.get('track')
+        if not track:
+            continue
 
-        audio_features = sp.audio_features(track['id'])[0]
-        if not audio_features: continue  # Skip if audio features are unavailable
+        track_id = track['id']
+        track_name = track['name']
+        artist_name = track['artists'][0]['name']
+        album_name = track['album']['name']
+        release_date = track['album']['release_date']
+        popularity = track['popularity']
 
-        track_data.append({
-            'track_name': track['name'],
-            'artist': track['artists'][0]['name'],
-            'popularity': track['popularity'],
-            'danceability': audio_features['danceability'],
-            'energy': audio_features['energy'],
-            'tempo': audio_features['tempo'],
-            'duration_ms': audio_features['duration_ms']
-        })
+        try:
+            audio_features = sp.audio_features(track_id)[0]
+            if audio_features is None:
+                raise SpotifyException(403, -1, "Audio features not found")
 
-    return pd.DataFrame(track_data)
+            data.append({
+                "track_id": track_id,
+                "track_name": track_name,
+                "artist_name": artist_name,
+                "album_name": album_name,
+                "release_date": release_date,
+                "popularity": popularity,
+                "danceability": audio_features["danceability"],
+                "energy": audio_features["energy"],
+                "key": audio_features["key"],
+                "loudness": audio_features["loudness"],
+                "mode": audio_features["mode"],
+                "speechiness": audio_features["speechiness"],
+                "acousticness": audio_features["acousticness"],
+                "instrumentalness": audio_features["instrumentalness"],
+                "liveness": audio_features["liveness"],
+                "valence": audio_features["valence"],
+                "tempo": audio_features["tempo"],
+                "duration_ms": audio_features["duration_ms"],
+                "time_signature": audio_features["time_signature"]
+            })
 
-def save_to_sqlite(df, db_path="../data/spotify.db"):
-    print("Saving to SQLite database...")
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    engine = create_engine(f"sqlite:///{db_path}")
-    df.to_sql("spotify_tracks", engine, if_exists='replace', index=False)
-    print(f"Saved {len(df)} tracks to {db_path}")
+        except SpotifyException as e:
+            print(f"⚠️ Skipping track due to audio_features error: {track_name} ({track_id})")
+            print(f"{e}")
+
+    if not data:
+        print("⚠️ No tracks were fetched. Check the playlist ID or API access.")
+        return pd.DataFrame()
+
+    return pd.DataFrame(data)
 
 if __name__ == "__main__":
-    playlist_id = "0I0YiGfPrZtlzu1z4wHtoC" # indie chill wanderlust
-    
+    playlist_id = "0I0YiGfPrZtlzu1z4wHtoC"  # Replace with your own playlist ID
     df = fetch_playlist_tracks(playlist_id)
 
-    if df.empty:
-        print("No tracks were fetched. Please check the playlist ID or API permissions.")
+    if not df.empty:
+        os.makedirs("data", exist_ok=True)
+        output_file = "data/spotify_audio_features.csv"
+        df.to_csv(output_file, index=False)
+        print(f"✅ Data saved to {output_file}")
     else:
-        print(df.head())
-        save_to_sqlite(df)
+        print("❌ No data to save.")
